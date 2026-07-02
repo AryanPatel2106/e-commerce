@@ -1,4 +1,5 @@
 import { User } from "../models/user.models.js"
+import { Address } from "../models/address.models.js"
 import { ApiResponse } from "../utils/api-response.js"
 import { ApiError } from "../utils/api-error.js"
 import { asyncHandler } from "../utils/async-handler.js"
@@ -6,34 +7,55 @@ import { sendEmail, emailVerificationMailgenContent, forgotPasswordMailgenConten
 import crypto from "crypto"
 
 const registerUser = asyncHandler(async (req, res) => {
-    const {fullName, email, password} = req.body
+    const {fullName, email, phoneNumber, password, country, houseNumber, street, landmark, pinCode, city, state} = req.body
 
     const existingVerifiedUser = await User.findOne({
-        email: email,
+        $or: [
+            { email: email },
+            { phoneNumber: phoneNumber }
+        ],
         isEmailVerified: true
     })
     
     if (existingVerifiedUser) {
-        throw new ApiError(409, "A verified user with this email already exists.")
+        throw new ApiError(409, "A verified user with this email or phone number already exists.")
     }
 
     await User.deleteMany({
-        email: email,
+        $or: [
+            { email: email },
+            { phoneNumber: phoneNumber }
+        ],
         isEmailVerified: false
     })
 
     const user = new User({
         email,
+        phoneNumber,
         password, 
         fullName,
         isEmailVerified: false
     })
 
-    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken()
+    const address = new Address({
+        user: user._id,
+        country,
+        houseNumber,
+        street,
+        landmark,
+        pinCode,
+        city,
+        state
+    })
 
+    
+    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
+    
     user.emailVerificationToken = hashedToken
     user.emailVerificationExpiry = tokenExpiry
+
     await user.save()
+    await address.save()
 
     await sendEmail({
         email: user.email,
@@ -48,7 +70,7 @@ const registerUser = asyncHandler(async (req, res) => {
         new ApiResponse(
             200, 
             { fullName: user.fullName, email: user.email }, 
-            "OTP sent successfully. You have 5 minutes to verify."
+            "OTP sent successfully. You have 10 minutes to verify."
         )
     )
 })
@@ -68,7 +90,8 @@ const verifyOtpAndFinalizeRegister = asyncHandler(async (req, res) => {
 
     if (Date.now() > user.emailVerificationExpiry) {
         await User.findByIdAndDelete(user._id) 
-        throw new ApiError(400, "Code has expired (5-minute window passed). Please register again.")
+        await Address.deleteMany({ user: user._id })
+        throw new ApiError(400, "Code has expired (10-minute window passed). Please register again.")
     }
 
     const hashedToken = crypto.createHash("sha256").update(otp).digest("hex")
@@ -115,7 +138,7 @@ const resendOtp = asyncHandler(async (req, res) => {
         throw new ApiError(404, "No pending registration found. Please fill the form again.")
     }
 
-    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken()
+    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
 
     user.emailVerificationToken = hashedToken
     user.emailVerificationExpiry = tokenExpiry
@@ -127,7 +150,7 @@ const resendOtp = asyncHandler(async (req, res) => {
         subject: "Your New Verification OTP",
         mailgenContent: emailVerificationMailgenContent(
             user.fullName,
-            `Your new verification code is: ${unHashedToken}. Valid for 5 minutes.`
+            `Your new verification code is: ${unHashedToken}. Valid for 10 minutes.`
         )
     })
 
@@ -157,7 +180,7 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     if (!user.isEmailVerified) {
-        const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken()
+        const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
         
         user.emailVerificationToken = hashedToken
         user.emailVerificationExpiry = tokenExpiry
@@ -168,7 +191,7 @@ const loginUser = asyncHandler(async (req, res) => {
             subject: "Verify your email to complete login",
             mailgenContent: emailVerificationMailgenContent(
                 user.fullName,
-                `You attempted to login but your email isn't verified yet. Your verification code is: ${unHashedToken}. Valid for 5 minutes.`
+                `You attempted to login but your email isn't verified yet. Your verification code is: ${unHashedToken}. Valid for 10 minutes.`
             )
         })
 
@@ -214,7 +237,7 @@ const forgotPasswordRequest = asyncHandler(async (req, res) => {
         throw new ApiError(404, "user does not exist", [])
     }
 
-    const {unHashedToken, hashedToken, tokenExpiry} = user.generateTemporaryToken()
+    const {unHashedToken, hashedToken, tokenExpiry} = user.generateTemporaryToken(20)
 
     user.forgotPasswordToken = hashedToken
     user.forgotPasswordExpiry = tokenExpiry
@@ -227,7 +250,7 @@ const forgotPasswordRequest = asyncHandler(async (req, res) => {
             subject: "Password reset request",
             mailgenContent: forgotPasswordMailgenContent(
                 user.fullName,
-                `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password/${unHashedToken}`
+                `${process.env.CLIENT_URL || "http://localhost:5000"}/api/v1/reset-password/${unHashedToken}`
             )
         }
     )
