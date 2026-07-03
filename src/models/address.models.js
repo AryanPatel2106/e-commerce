@@ -1,10 +1,16 @@
 import mongoose, {Schema} from "mongoose";
+import { AddressTypesEnum, availableAddressTypes } from "../utils/constants.js";
 
 const addressSchema = new Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true
+    },
+    type: {
+        type: String,
+        enum: availableAddressTypes,
+        default: AddressTypesEnum.CUSTOMER
     },
     country: {
         type: String,

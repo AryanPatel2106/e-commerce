@@ -13,3 +13,21 @@
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/current-user`
 
+### address
+
+- `GET /api/v1/addresses`
+- `POST /api/v1/addresses`
+- `DELETE /api/v1/addresses/:addressId`
+- `PUT /api/v1/addresses/:addressId`
+
+### seller
+
+- `POST /api/v1/seller/register`
+
+### admin
+
+- `GET /api/v1/admin/get-all-sellers`
+- `GET /api/v1/admin/get-pending-sellers`
+- `GET /api/v1/admin/:sellerId`
+- `PUT /api/v1/admin/:sellerId/approve`
+- `PUT /api/v1/admin/:sellerId/reject`

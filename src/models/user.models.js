@@ -2,6 +2,7 @@ import mongoose, {Schema} from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { UserRolesEnum, availableUserRoles } from "../utils/constants.js";
 
 const userSchema = new Schema({
     fullName: {
@@ -15,6 +16,11 @@ const userSchema = new Schema({
         unique: true,
         lowercase: true,
         trim: true
+    },
+    role: {
+        type: [String],
+        enum: availableUserRoles,
+        default: UserRolesEnum.CUSTOMER
     },
     phoneNumber: {
         type: String,
