@@ -31,7 +31,7 @@ const addNewAddress = asyncHandler(async (req, res) => {
 })
 
 const getAllAddresses = asyncHandler(async (req, res) => {
-    const addresses = await Address.find({ user: req.user._id })
+    const addresses = await Address.find({ user: req.user._id, type: "customer" })
 
     return res
         .status(200)
