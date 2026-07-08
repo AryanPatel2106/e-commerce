@@ -22,13 +22,13 @@ app.use(
 // routes
 import healthCheckRouter from "./routes/healthcheck.routes.js"
 import authRouter from "./routes/auth.routes.js"
-import addressRouter from "./routes/address.routes.js"
+import customerRouter from "./routes/customer.routes.js"
 import sellerRouter from "./routes/seller.routes.js"
 import adminRouter from "./routes/admin.routes.js"
 
 app.use("/api/v1/healthcheck", healthCheckRouter);
 app.use("/api/v1/auth",authRouter);
-app.use("/api/v1/addresses", addressRouter);
+app.use("/api/v1/customer", customerRouter);
 app.use("/api/v1/seller", sellerRouter);
 app.use("/api/v1/admin", adminRouter);
 

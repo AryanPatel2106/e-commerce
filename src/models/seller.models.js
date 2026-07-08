@@ -87,6 +87,11 @@ const sellerSchema = new Schema({
         type: String,
         trim: true
     },
+    upiId: {
+        type: String,
+        trim: true,
+        required: true
+    },
     bankAccountHolderName: {
         type: String,
         required: true,

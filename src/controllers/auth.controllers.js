@@ -5,6 +5,10 @@ import { ApiError } from "../utils/api-error.js"
 import { asyncHandler } from "../utils/async-handler.js"
 import { sendEmail, emailVerificationMailgenContent, forgotPasswordMailgenContent } from "../utils/mail.js"
 import crypto from "crypto"
+import { OTP } from "otplib";
+import QRCode from "qrcode";
+
+const otp = new OTP();
 
 const registerUser = asyncHandler(async (req, res) => {
     const {fullName, email, phoneNumber, password, country, houseNumber, street, landmark, pinCode, city, state} = req.body
@@ -159,6 +163,77 @@ const resendOtp = asyncHandler(async (req, res) => {
     )
 })
 
+const setup2FA = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id);
+
+    if (user.isTwoFactorEnabled) {
+        throw new ApiError(400, "2FA is already enabled");
+    }
+
+    const secret = otp.generateSecret();
+
+    const otpauthUrl = `otpauth://totp/my-ecommerce-app-seller:${user.email}?secret=${secret}&issuer=my-ecommerce-app-seller`;
+
+    user.twoFactorSecret = secret;
+    await user.save({ validateBeforeSave: false });
+
+    const qrCodeImageUrl = await QRCode.toDataURL(otpauthUrl);
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                { qrCodeImageUrl, secret },
+                "Scan this QR code with your Authenticator app."
+            )
+        );
+})
+
+const verifyAndEnable2FA = asyncHandler(async (req, res) => {
+    const { code } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (!code) {
+        throw new ApiError(400, "2FA verification code is required");
+    }
+
+    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+
+    if (!isValid) {
+        throw new ApiError(400, "Invalid 2FA code. Verification failed.");
+    }
+
+    user.isTwoFactorEnabled = true;
+    await user.save({ validateBeforeSave: false });
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Two-Factor Authentication enabled successfully.")
+    );
+});
+
+const disable2FA = asyncHandler(async (req, res) => {
+    const { code } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (!user.isTwoFactorEnabled) {
+        throw new ApiError(400, "2FA is not enabled.");
+    }
+
+    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+    if (!isValid) {
+        throw new ApiError(400, "Invalid code. Cannot disable 2FA.");
+    }
+
+    user.twoFactorSecret = undefined;
+    user.isTwoFactorEnabled = false;
+    await user.save({ validateBeforeSave: false });
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "2FA has been disabled.")
+    );
+});
+
 const loginUser = asyncHandler(async (req, res) => {
     const { email, password } = req.body
 
@@ -208,6 +283,16 @@ const loginUser = asyncHandler(async (req, res) => {
         )
     }
 
+    if (user.isTwoFactorEnabled) {
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                { requires2FA: true, userId: user._id },
+                "Credentials valid. Please provide your 2FA verification code."
+            )
+        );
+    }
+
     const accessToken = user.generateAccessToken()
     const loggedInUser = await User.findById(user._id).select("-password -emailVerificationToken -emailVerificationExpiry")
 
@@ -226,6 +311,45 @@ const loginUser = asyncHandler(async (req, res) => {
                 "User logged in successfully"
             )
         )
+})
+
+const verify2FALogin = asyncHandler(async (req, res) => {
+    const { userId, code } = req.body;
+
+    if (!userId || !code) {
+        throw new ApiError(400, "User ID and 2FA code are required");
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+
+    if (!isValid) {
+        throw new ApiError(400, "Invalid 2FA code. Login failed.");
+    }
+
+    const accessToken = user.generateAccessToken();
+    const loggedInUser = await User.findById(user._id).select("-password -emailVerificationToken -emailVerificationExpiry");
+
+    const options = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production"
+    };
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                { user: loggedInUser, accessToken },
+                "User logged in successfully with 2FA"
+            )
+        );
 })
 
 const forgotPasswordRequest = asyncHandler(async (req, res) => {
@@ -332,4 +456,4 @@ const getCurrentUser = asyncHandler(async (req, res) => {
         )
 })
 
-export { registerUser, verifyOtpAndFinalizeRegister, resendOtp, loginUser, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser }
+export { registerUser, verifyOtpAndFinalizeRegister, resendOtp, setup2FA, verifyAndEnable2FA, disable2FA, loginUser, verify2FALogin, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser}
