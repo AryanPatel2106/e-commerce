@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {registerUser, verifyOtpAndFinalizeRegister, resendOtp, loginUser, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser } from "../controllers/auth.controllers.js"
+import {registerUser, verifyOtpAndFinalizeRegister, resendOtp, setup2FA, verifyAndEnable2FA, disable2FA, loginUser, verify2FALogin, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser } from "../controllers/auth.controllers.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 import { userRegisterValidator, userLoginValidator, userForgotPasswordValidator, userResetForgotPasswordValidator, createAddressValidator } from "../validators/index.js";
 import { validate } from "../middlewares/validator.middleware.js";
@@ -20,10 +20,29 @@ router.route("/resend-otp").post(
     resendOtp
 );
 
+router.route("/setup-2fa").post(
+    verifyJWT,
+    setup2FA
+);
+
+router.route("/verify-2fa").post(
+    verifyJWT,
+    verifyAndEnable2FA
+);
+
+router.route("/disable-2fa").post(
+    verifyJWT,
+    disable2FA
+);
+
 router.route("/login").post(
     userLoginValidator(), 
     validate, 
     loginUser
+);
+
+router.route("/verify-2fa-login").post(
+    verify2FALogin
 );
 
 router.route("/forgot-password").post(

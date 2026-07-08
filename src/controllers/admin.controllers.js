@@ -72,10 +72,14 @@ const approveSeller = asyncHandler(async (req, res) => {
 
     await seller.save()
 
-    User.findByIdAndUpdate(seller.userId, { $addToSet: { role: "seller" } })
+    await User.findByIdAndUpdate(
+        seller.userId,
+        { $addToSet: { role: "seller" } },
+        { session }
+    );
 
-    session.commitTransaction();
-    session.endSession();
+    await session.commitTransaction();
+    await session.endSession();
 
     return res
         .status(200)
@@ -110,6 +114,12 @@ const rejectSeller = asyncHandler(async (req, res) => {
     if (businessAddressId) {
         await Address.findByIdAndDelete(businessAddressId)
     }
+
+    await User.findByIdAndUpdate(
+        seller.userId,
+        { $pull: { role: "seller" } },
+        { session }
+    );
 
     session.commitTransaction();
     session.endSession();

@@ -31,6 +31,13 @@ const userSchema = new Schema({
         type: String,
         required: true
     },
+    twoFactorSecret: {
+        type: String
+    },
+    isTwoFactorEnabled: {
+        type: Boolean,
+        default: false
+    },
     isEmailVerified: {
         type: Boolean,
         default: false

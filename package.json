@@ -23,6 +23,8 @@
     "jsonwebtoken": "^9.0.3",
     "mailgen": "^2.0.34",
     "mongoose": "^9.7.3",
+    "multer": "^2.2.0",
+    "otplib": "^13.4.1",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0"
   },
