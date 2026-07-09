@@ -6,6 +6,7 @@ import { ApiResponse } from "../utils/api-response.js"
 import { ApiError } from "../utils/api-error.js"
 import { asyncHandler } from "../utils/async-handler.js"
 import QRCode from "qrcode";
+import {availableOrderStatus, OrderStatusEnum } from "../utils/constants.js"
 
 // address controllers
 
@@ -166,6 +167,12 @@ const placeOrder = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Product not found");
     }
 
+    const seller = await Seller.findById(product.seller);
+
+    if (!seller) {
+        throw new ApiError(404, "Seller not found for this product");
+    }
+
     const shippingAddress = await Address.findById(shippingAddressId);
 
     if (!shippingAddress) {
@@ -185,6 +192,7 @@ const placeOrder = asyncHandler(async (req, res) => {
     const order = new Order({
         userId: req.user._id,
         productId,
+        sellerId: seller._id,
         quantity,
         totalPrice,
         shippingAddress: shippingAddressId
@@ -247,7 +255,7 @@ const cancelOrder = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Only pending orders can be canceled");
     }
 
-    order.status = 'cancelled';
+    order.status = OrderStatusEnum.CANCELLED;
     await order.save();
 
     return res.status(200).json(

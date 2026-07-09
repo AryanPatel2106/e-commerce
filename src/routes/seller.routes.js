@@ -2,7 +2,7 @@ import { Router } from "express";
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 import { verifySeller } from "../middlewares/seller.middleware.js"
 import { upload } from "../middlewares/multer.middleware.js"
-import { registerSeller, getSellerProfile, addProduct, getAllProducts, getProductById, updateProduct, deleteProduct } from "../controllers/seller.controllers.js"
+import { registerSeller, getSellerProfile, addProduct, getAllProducts, getProductById, updateProduct, deleteProduct, getAllOrders, getOrderById, updateOrderStatus } from "../controllers/seller.controllers.js"
 import { sellerRegisterValidator, addProductValidator } from "../validators/index.js";
 import { validate } from "../middlewares/validator.middleware.js";
 
@@ -46,6 +46,22 @@ router.route("/products/:productId")
     .delete(
         verifySeller,
         deleteProduct
+    )
+
+router.route("/orders")
+    .get(
+        verifySeller,
+        getAllOrders
+    )
+
+router.route("/orders/:orderId")
+    .get(
+        verifySeller,
+        getOrderById
+    )
+    .put(
+        verifySeller,
+        updateOrderStatus
     )
 
 export default router;

@@ -1,4 +1,5 @@
 import mongoose, { Schema } from "mongoose"
+import { OrderStatusEnum,availableOrderStatus } from "../utils/constants.js"
 
 const orderSchema = new Schema({
     userId: {
@@ -9,6 +10,11 @@ const orderSchema = new Schema({
     productId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Product",
+        required: true
+    },
+    sellerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Seller",
         required: true
     },
     quantity: {
@@ -23,8 +29,8 @@ const orderSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ["pending", "confirmed", "shipped", "delivered", "cancelled"],
-        default: "pending"
+        enum: availableOrderStatus,
+        default: OrderStatusEnum.PENDING
     },
     shippingAddress: { 
         type: mongoose.Schema.Types.ObjectId,
