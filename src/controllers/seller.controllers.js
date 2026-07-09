@@ -1,6 +1,7 @@
 import { Seller } from "../models/seller.models.js"
 import { Address } from "../models/address.models.js"
 import { Product } from "../models/product.models.js"
+import { Order } from "../models/order.models.js"
 import { ApiResponse } from "../utils/api-response.js"
 import { ApiError } from "../utils/api-error.js"
 import { asyncHandler } from "../utils/async-handler.js"
@@ -8,6 +9,7 @@ import { AddressTypesEnum } from "../utils/constants.js"
 import { uploadToS3, deleteFromS3, } from "../utils/s3.js"
 import mongoose from "mongoose"
 import QRCode from "qrcode";
+import { OrderStatusEnum, availableOrderStatus } from "../utils/constants.js"
 
 const registerSeller = asyncHandler(async (req, res) => {
 	const user = req.user;
@@ -391,4 +393,118 @@ const deleteProduct = asyncHandler(async (req, res) => {
 		);
 })
 
-export { registerSeller, getSellerProfile, addProduct, getAllProducts, getProductById, updateProduct, deleteProduct }
+// order controller
+
+const getAllOrders = asyncHandler(async (req, res) => {
+	const user = req.user;
+
+	if (!user) {
+		throw new ApiError(404, "Unauthorized user. Please login to continue.");
+	}
+
+	const seller = await Seller.findOne({ userId: user._id, profileVerificationStatus: "verified" });
+
+	if (!seller) {
+		throw new ApiError(403, "You are not authorized to view orders. Please complete the seller verification process.");
+	}
+
+	const orders = await Order.find({ sellerId: seller._id })
+		.populate('productId', 'name images')
+		.populate('userId', 'name email')
+
+	return res
+		.status(200)
+		.json(
+			new ApiResponse(
+				200,
+				orders,
+				"Orders fetched successfully."
+			)
+		);
+})
+
+const getOrderById = asyncHandler(async (req, res) => {
+	const user = req.user;
+
+	if (!user) {
+		throw new ApiError(404, "Unauthorized user. Please login to continue.");
+	}
+
+	const seller = await Seller.findOne({ userId: user._id, profileVerificationStatus: "verified" });
+
+	if (!seller) {
+		throw new ApiError(403, "You are not authorized to view orders. Please complete the seller verification process.");
+	}
+
+	const { orderId } = req.params;
+
+	const order = await Order.findById(orderId)
+		.populate('productId', 'name images')
+		.populate('userId', 'name email')
+		.populate('shippingAddress', 'country houseNumber street landmark pinCode city state');
+
+	if (!order) {
+		throw new ApiError(404, "Order not found.");
+	}
+
+	if (order.sellerId.toString() !== seller._id.toString()) {
+		throw new ApiError(403, "You are not authorized to view this order.");
+	}
+
+	return res
+		.status(200)
+		.json(
+			new ApiResponse(
+				200,
+				order,
+				"Order fetched successfully."
+			)
+		);
+})
+
+const updateOrderStatus = asyncHandler(async (req, res) => {
+	const user = req.user;
+
+	if (!user) {
+		throw new ApiError(404, "Unauthorized user. Please login to continue.");
+	}
+
+	const seller = await Seller.findOne({ userId: user._id, profileVerificationStatus: "verified" });
+
+	if (!seller) {
+		throw new ApiError(403, "You are not authorized to update orders. Please complete the seller verification process.");
+	}
+
+	const { orderId } = req.params;
+
+	const order = await Order.findById(orderId);
+
+	if (!order) {
+		throw new ApiError(404, "Order not found.");
+	}
+
+	if (order.sellerId.toString() !== seller._id.toString()) {
+		throw new ApiError(403, "You are not authorized to update this order.");
+	}
+
+	const { status } = req.body;
+
+	if (!availableOrderStatus.includes(status)) {
+		throw new ApiError(400, "Invalid order status.");
+	}
+
+	order.status = status;
+	await order.save();
+
+	return res
+		.status(200)
+		.json(
+			new ApiResponse(
+				200,
+				order,
+				"Order status updated successfully."
+			)
+		);
+})
+
+export { registerSeller, getSellerProfile, addProduct, getAllProducts, getProductById, updateProduct, deleteProduct, getAllOrders, getOrderById, updateOrderStatus }

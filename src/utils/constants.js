@@ -20,3 +20,13 @@ export const selletProfileVerificationStatusEnum = {
 }
 
 export const availableSelletProfileVerificationStatus = Object.values(selletProfileVerificationStatusEnum)
+
+export const OrderStatusEnum = {
+    PENDING: "pending",
+    CONFIRMED: "confirmed",
+    SHIPPED: "shipped",
+    DELIVERED: "delivered",
+    CANCELLED: "cancelled"
+}
+
+export const availableOrderStatus = Object.values(OrderStatusEnum)
