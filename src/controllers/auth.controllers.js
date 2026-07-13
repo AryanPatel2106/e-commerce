@@ -7,6 +7,9 @@ import { sendEmail, emailVerificationMailgenContent, forgotPasswordMailgenConten
 import crypto from "crypto"
 import { OTP } from "otplib";
 import QRCode from "qrcode";
+import dotenv from "dotenv"
+
+dotenv.config()
 
 const otp = new OTP();
 
@@ -374,7 +377,8 @@ const forgotPasswordRequest = asyncHandler(async (req, res) => {
             subject: "Password reset request",
             mailgenContent: forgotPasswordMailgenContent(
                 user.fullName,
-                `${process.env.CLIENT_URL || "http://localhost:5000"}/api/v1/reset-password/${unHashedToken}`
+                /*`${process.env.CLIENT_URL || "http://localhost:5000"}/api/v1/reset-password/${unHashedToken}`*/
+                `${process.env.CLIENT_URI || "http://localhost:5173"}/reset-password/${unHashedToken}`
             )
         }
     )
