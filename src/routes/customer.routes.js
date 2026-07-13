@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { addNewAddress, getAllAddresses, deleteAddress, updateAddress, getProducts, getProductById, placeOrder, getOrders,getOrderById, cancelOrder } from "../controllers/customer.controllers.js"
+import { addNewAddress, getAllAddresses, deleteAddress, updateAddress, getProducts, getProductById, placeOrder, getOrders,getOrderById, cancelOrder, getCart, addToCart, removeFromCart } from "../controllers/customer.controllers.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 import { createAddressValidator } from "../validators/index.js";
 import { validate } from "../middlewares/validator.middleware.js";
 
 const router = Router();
 
-router.route("/")
+router.route("/addresses")
     .get(
         verifyJWT,
         getAllAddresses
@@ -60,6 +60,22 @@ router.route("/orders/:orderId")
     .patch(
         verifyJWT,
         cancelOrder
+    )
+
+router.route("/cart")
+    .get(
+        verifyJWT,
+        getCart
+    )
+
+router.route("/cart/:productId")
+    .post(
+        verifyJWT,
+        addToCart
+    )
+    .delete(
+        verifyJWT,
+        removeFromCart
     )
 
 export default router;

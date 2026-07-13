@@ -2,6 +2,7 @@ import { Address } from "../models/address.models.js";
 import { Product } from "../models/product.models.js";
 import { Seller } from "../models/seller.models.js"
 import { Order } from "../models/order.models.js";
+import { Cart } from "../models/cart.models.js";
 import { ApiResponse } from "../utils/api-response.js"
 import { ApiError } from "../utils/api-error.js"
 import { asyncHandler } from "../utils/async-handler.js"
@@ -142,6 +143,10 @@ const getProductById = asyncHandler(async (req, res) => {
 
     const seller = await Seller.findById(product.seller)
 
+    if(!seller) {
+        throw new ApiError(404, "Seller not found for this product")
+    }
+
     const upiId = seller.upiId;
     const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(seller.businessName)}&am=${product.price}&cu=INR`;
     const qrImageDataUrl = await QRCode.toDataURL(upiUrl);
@@ -267,6 +272,102 @@ const cancelOrder = asyncHandler(async (req, res) => {
     );
 })
 
+// cart controllers
+
+const getCart = asyncHandler(async (req, res) => {
+    const cart = await Cart.findOne({ user: req.user._id }).populate('products.product', 'name price images');
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            cart,
+            "Cart fetched successfully"
+        )
+    );
+})
+
+const addToCart = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+
+    const product = await Product.findById(productId);
+
+    if (!product) {
+        throw new ApiError(404, "Product not found");
+    }
+
+    if(product.quantity <= 0) {
+        throw new ApiError(400, "Product is out of stock");
+    }
+
+    let cart = await Cart.findOne({ user: req.user._id }); 
+
+    if (!cart) {
+        cart = new Cart({
+            user: req.user._id,
+            products: [{ product: productId, quantity: 1 }]
+        });
+        
+        await cart.save();
+        
+        return res.status(201).json(
+            new ApiResponse(
+                201,
+                cart,
+                "Product added to cart successfully"
+            )
+        );
+    }
+
+    const existingItemIndex = cart.products.findIndex(
+        item => item.product.toString() === productId
+    );
+
+    if (existingItemIndex > -1) {
+        cart.products[existingItemIndex].quantity += 1;
+    } else {
+        cart.products.push({ product: productId, quantity: 1 });
+    }
+
+    await cart.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            cart,
+            "Product added to cart successfully"
+        )
+    );
+});
+
+const removeFromCart = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+
+    const cart = await Cart.findOne({ user: req.user._id });
+
+    if (!cart) {
+        throw new ApiError(404, "Cart not found");
+    }
+
+    const itemIndex = cart.products.findIndex(
+        item => item.product.toString() === productId
+    );
+
+    if (itemIndex === -1) {
+        throw new ApiError(404, "Product not found in cart");
+    }
+
+    cart.products.splice(itemIndex, 1);
+    await cart.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            cart,
+            "Product removed from cart successfully"
+        )
+    );
+})
+
 export {
     addNewAddress,
     getAllAddresses,
@@ -277,5 +378,8 @@ export {
     placeOrder,
     getOrders,
     getOrderById,
-    cancelOrder
+    cancelOrder,
+    getCart,
+    addToCart,
+    removeFromCart
 }
