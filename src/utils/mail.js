@@ -18,7 +18,7 @@ const sendEmail = async (options) => {
     const mailGenerator = new Mailgen({
         theme: "default",
         product: {
-            name: "projectManager",
+            name: "omnicart",
             link: process.env.CLIENT_URL || "https://shopify.page",
         },
     });

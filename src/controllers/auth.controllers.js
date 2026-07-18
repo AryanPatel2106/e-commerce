@@ -1,463 +1,526 @@
-import { User } from "../models/user.models.js"
-import { Address } from "../models/address.models.js"
-import { ApiResponse } from "../utils/api-response.js"
-import { ApiError } from "../utils/api-error.js"
-import { asyncHandler } from "../utils/async-handler.js"
-import { sendEmail, emailVerificationMailgenContent, forgotPasswordMailgenContent } from "../utils/mail.js"
-import crypto from "crypto"
+import { User } from "../models/user.models.js";
+import { Address } from "../models/address.models.js";
+import { ApiResponse } from "../utils/api-response.js";
+import { ApiError } from "../utils/api-error.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import {
+  sendEmail,
+  emailVerificationMailgenContent,
+  forgotPasswordMailgenContent,
+} from "../utils/mail.js";
+import crypto from "crypto";
 import { OTP } from "otplib";
 import QRCode from "qrcode";
-import dotenv from "dotenv"
+import dotenv from "dotenv";
 
-dotenv.config()
+dotenv.config();
 
 const otp = new OTP();
 
 const registerUser = asyncHandler(async (req, res) => {
-    const {fullName, email, phoneNumber, password, country, houseNumber, street, landmark, pinCode, city, state} = req.body
+  const {
+    fullName,
+    email,
+    phoneNumber,
+    password,
+    country,
+    houseNumber,
+    street,
+    landmark,
+    pinCode,
+    city,
+    state,
+  } = req.body;
 
-    const existingVerifiedUser = await User.findOne({
-        $or: [
-            { email: email },
-            { phoneNumber: phoneNumber }
-        ],
-        isEmailVerified: true
-    })
-    
-    if (existingVerifiedUser) {
-        throw new ApiError(409, "A verified user with this email or phone number already exists.")
-    }
+  const existingVerifiedUser = await User.findOne({
+    $or: [{ email: email }, { phoneNumber: phoneNumber }],
+    isEmailVerified: true,
+  });
 
-    await User.deleteMany({
-        $or: [
-            { email: email },
-            { phoneNumber: phoneNumber }
-        ],
-        isEmailVerified: false
-    })
+  if (existingVerifiedUser) {
+    throw new ApiError(
+      409,
+      "A verified user with this email or phone number already exists.",
+    );
+  }
 
-    const user = new User({
-        email,
-        phoneNumber,
-        password, 
-        fullName,
-        isEmailVerified: false
-    })
+  await User.deleteMany({
+    $or: [{ email: email }, { phoneNumber: phoneNumber }],
+    isEmailVerified: false,
+  });
 
-    const address = new Address({
-        user: user._id,
-        country,
-        houseNumber,
-        street,
-        landmark,
-        pinCode,
-        city,
-        state
-    })
+  const user = new User({
+    email,
+    phoneNumber,
+    password,
+    fullName,
+    isEmailVerified: false,
+  });
 
-    
-    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
-    
-    user.emailVerificationToken = hashedToken
-    user.emailVerificationExpiry = tokenExpiry
+  const address = new Address({
+    user: user._id,
+    country,
+    houseNumber,
+    street,
+    landmark,
+    pinCode,
+    city,
+    state,
+  });
 
-    await user.save()
-    await address.save()
+  const { unHashedToken, hashedToken, tokenExpiry } =
+    user.generateTemporaryToken(6);
 
-    await sendEmail({
-        email: user.email,
-        subject: "Your Registration Verification OTP",
-        mailgenContent: emailVerificationMailgenContent(
-            user.fullName,
-            `Your verification code is: ${unHashedToken}. It is valid for exactly 5 minutes.`
-        )
-    })
+  user.emailVerificationToken = hashedToken;
+  user.emailVerificationExpiry = tokenExpiry;
 
-    return res.status(200).json(
-        new ApiResponse(
-            200, 
-            { fullName: user.fullName, email: user.email }, 
-            "OTP sent successfully. You have 10 minutes to verify."
-        )
-    )
-})
+  await user.save();
+  await address.save();
+
+  await sendEmail({
+    email: user.email,
+    subject: "Your Registration Verification OTP",
+    mailgenContent: emailVerificationMailgenContent(
+      user.fullName,
+      `Your verification code is: ${unHashedToken}. It is valid for exactly 5 minutes.`,
+    ),
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { fullName: user.fullName, email: user.email },
+        "OTP sent successfully. You have 10 minutes to verify.",
+      ),
+    );
+});
 
 const verifyOtpAndFinalizeRegister = asyncHandler(async (req, res) => {
-    const {otp,email} = req.body
+  const { otp, email } = req.body;
 
-    if (!otp || !email) {
-        throw new ApiError(400, "Verification code and email are required")
-    }
+  if (!otp || !email) {
+    throw new ApiError(400, "Verification code and email are required");
+  }
 
-    const user = await User.findOne({ email, isEmailVerified: false })
+  const user = await User.findOne({ email, isEmailVerified: false });
 
-    if (!user) {
-        throw new ApiError(404, "No pending registration found for this email.")
-    }
+  if (!user) {
+    throw new ApiError(404, "No pending registration found for this email.");
+  }
 
-    if (Date.now() > user.emailVerificationExpiry) {
-        await User.findByIdAndDelete(user._id) 
-        await Address.deleteMany({ user: user._id })
-        throw new ApiError(400, "Code has expired (10-minute window passed). Please register again.")
-    }
+  if (Date.now() > user.emailVerificationExpiry) {
+    await User.findByIdAndDelete(user._id);
+    await Address.deleteMany({ user: user._id });
+    throw new ApiError(
+      400,
+      "Code has expired (10-minute window passed). Please register again.",
+    );
+  }
 
-    const hashedToken = crypto.createHash("sha256").update(otp).digest("hex")
+  const hashedToken = crypto.createHash("sha256").update(otp).digest("hex");
 
-    if (user.emailVerificationToken !== hashedToken) {
-        throw new ApiError(400, "Invalid verification code.")
-    }
+  if (user.emailVerificationToken !== hashedToken) {
+    throw new ApiError(400, "Invalid verification code.");
+  }
 
-    user.isEmailVerified = true
-    user.emailVerificationToken = undefined 
-    user.emailVerificationExpiry = undefined
+  user.isEmailVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpiry = undefined;
 
-    await user.save({ validateBeforeSave: false })
+  await user.save({ validateBeforeSave: false });
 
-    const createdUser = await User.findById(user._id).select(
-        "-password -emailVerificationToken -emailVerificationExpiry"
-    )
+  const createdUser = await User.findById(user._id).select(
+    "-password -emailVerificationToken -emailVerificationExpiry",
+  );
 
-    if (!createdUser) {
-        throw new ApiError(500, "Something went wrong while registering a user")
-    }
+  if (!createdUser) {
+    throw new ApiError(500, "Something went wrong while registering a user");
+  }
 
-    return res
-        .status(201)
-        .json(
-            new ApiResponse(
-                200,
-                { user: createdUser },
-                "User registered and verified successfully!"
-            )
-        )
-})
+  return res
+    .status(201)
+    .json(
+      new ApiResponse(
+        200,
+        { user: createdUser },
+        "User registered and verified successfully!",
+      ),
+    );
+});
 
 const resendOtp = asyncHandler(async (req, res) => {
-    const { email } = req.body 
+  const { email } = req.body;
 
-    if (!email) {
-        throw new ApiError(400, "Email is required to resend verification code")
-    }
+  if (!email) {
+    throw new ApiError(400, "Email is required to resend verification code");
+  }
 
-    const user = await User.findOne({ email, isEmailVerified: false })
+  const user = await User.findOne({ email, isEmailVerified: false });
 
-    if (!user) {
-        throw new ApiError(404, "No pending registration found. Please fill the form again.")
-    }
+  if (!user) {
+    throw new ApiError(
+      404,
+      "No pending registration found. Please fill the form again.",
+    );
+  }
 
-    const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
+  const { unHashedToken, hashedToken, tokenExpiry } =
+    user.generateTemporaryToken(6);
 
-    user.emailVerificationToken = hashedToken
-    user.emailVerificationExpiry = tokenExpiry
+  user.emailVerificationToken = hashedToken;
+  user.emailVerificationExpiry = tokenExpiry;
 
-    await user.save({ validateBeforeSave: false })
+  await user.save({ validateBeforeSave: false });
 
-    await sendEmail({
-        email: user.email,
-        subject: "Your New Verification OTP",
-        mailgenContent: emailVerificationMailgenContent(
-            user.fullName,
-            `Your new verification code is: ${unHashedToken}. Valid for 10 minutes.`
-        )
-    })
+  await sendEmail({
+    email: user.email,
+    subject: "Your New Verification OTP",
+    mailgenContent: emailVerificationMailgenContent(
+      user.fullName,
+      `Your new verification code is: ${unHashedToken}. Valid for 10 minutes.`,
+    ),
+  });
 
-    return res.status(200).json(
-        new ApiResponse(200, {}, "A new OTP has been dispatched to your email.")
-    )
-})
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, {}, "A new OTP has been dispatched to your email."),
+    );
+});
 
 const setup2FA = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id);
 
-    if (user.isTwoFactorEnabled) {
-        throw new ApiError(400, "2FA is already enabled");
-    }
+  if (user.isTwoFactorEnabled) {
+    throw new ApiError(400, "2FA is already enabled");
+  }
 
-    const secret = otp.generateSecret();
+  const secret = otp.generateSecret();
 
-    const otpauthUrl = `otpauth://totp/my-ecommerce-app-seller:${user.email}?secret=${secret}&issuer=my-ecommerce-app-seller`;
+  const otpauthUrl = `otpauth://totp/my-ecommerce-app-seller:${user.email}?secret=${secret}&issuer=my-ecommerce-app-seller`;
 
-    user.twoFactorSecret = secret;
-    await user.save({ validateBeforeSave: false });
+  user.twoFactorSecret = secret;
+  await user.save({ validateBeforeSave: false });
 
-    const qrCodeImageUrl = await QRCode.toDataURL(otpauthUrl);
+  const qrCodeImageUrl = await QRCode.toDataURL(otpauthUrl);
 
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                { qrCodeImageUrl, secret },
-                "Scan this QR code with your Authenticator app."
-            )
-        );
-})
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { qrCodeImageUrl, secret },
+        "Scan this QR code with your Authenticator app.",
+      ),
+    );
+});
 
 const verifyAndEnable2FA = asyncHandler(async (req, res) => {
-    const { code } = req.body;
-    const user = await User.findById(req.user._id);
+  const { code } = req.body;
+  const user = await User.findById(req.user._id);
 
-    if (!code) {
-        throw new ApiError(400, "2FA verification code is required");
-    }
+  if (!code) {
+    throw new ApiError(400, "2FA verification code is required");
+  }
 
-    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+  const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
 
-    if (!isValid) {
-        throw new ApiError(400, "Invalid 2FA code. Verification failed.");
-    }
+  if (!isValid) {
+    throw new ApiError(400, "Invalid 2FA code. Verification failed.");
+  }
 
-    user.isTwoFactorEnabled = true;
-    await user.save({ validateBeforeSave: false });
+  user.isTwoFactorEnabled = true;
+  await user.save({ validateBeforeSave: false });
 
-    return res.status(200).json(
-        new ApiResponse(200, {}, "Two-Factor Authentication enabled successfully.")
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        "Two-Factor Authentication enabled successfully.",
+      ),
     );
 });
 
 const disable2FA = asyncHandler(async (req, res) => {
-    const { code } = req.body;
-    const user = await User.findById(req.user._id);
+  const { code } = req.body;
+  const user = await User.findById(req.user._id);
 
-    if (!user.isTwoFactorEnabled) {
-        throw new ApiError(400, "2FA is not enabled.");
-    }
+  if (!user.isTwoFactorEnabled) {
+    throw new ApiError(400, "2FA is not enabled.");
+  }
 
-    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
-    if (!isValid) {
-        throw new ApiError(400, "Invalid code. Cannot disable 2FA.");
-    }
+  const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+  if (!isValid) {
+    throw new ApiError(400, "Invalid code. Cannot disable 2FA.");
+  }
 
-    user.twoFactorSecret = undefined;
-    user.isTwoFactorEnabled = false;
-    await user.save({ validateBeforeSave: false });
+  user.twoFactorSecret = undefined;
+  user.isTwoFactorEnabled = false;
+  await user.save({ validateBeforeSave: false });
 
-    return res.status(200).json(
-        new ApiResponse(200, {}, "2FA has been disabled.")
-    );
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "2FA has been disabled."));
 });
 
 const loginUser = asyncHandler(async (req, res) => {
-    const { email, password } = req.body
+  const { email, password } = req.body;
 
-    if (!email) {
-        throw new ApiError(400, "Email is required")
-    }
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
 
-    const user = await User.findOne({
-        email: email
-    })
+  const user = await User.findOne({
+    email: email,
+  });
 
-    if (!user) {
-        throw new ApiError(404, "User does not exist")
-    }
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
 
-    const isPasswordValid = await user.isPasswordCorrect(password)
-    if (!isPasswordValid) {
-        throw new ApiError(401, "Invalid user credentials")
-    }
+  const isPasswordValid = await user.isPasswordCorrect(password);
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid user credentials");
+  }
 
-    if (!user.isEmailVerified) {
-        const { unHashedToken, hashedToken, tokenExpiry } = user.generateTemporaryToken(6)
-        
-        user.emailVerificationToken = hashedToken
-        user.emailVerificationExpiry = tokenExpiry
-        await user.save({ validateBeforeSave: false })
+  if (!user.isEmailVerified) {
+    const { unHashedToken, hashedToken, tokenExpiry } =
+      user.generateTemporaryToken(6);
 
-        await sendEmail({
-            email: user.email,
-            subject: "Verify your email to complete login",
-            mailgenContent: emailVerificationMailgenContent(
-                user.fullName,
-                `You attempted to login but your email isn't verified yet. Your verification code is: ${unHashedToken}. Valid for 10 minutes.`
-            )
-        })
+    user.emailVerificationToken = hashedToken;
+    user.emailVerificationExpiry = tokenExpiry;
+    await user.save({ validateBeforeSave: false });
 
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                { 
-                    requiresVerification: true, 
-                    email: user.email, 
-                    fullName: user.fullName 
-                },
-                "Email unverified. A new OTP has been sent. Redirecting to verification..."
-            )
-        )
-    }
+    await sendEmail({
+      email: user.email,
+      subject: "Verify your email to complete login",
+      mailgenContent: emailVerificationMailgenContent(
+        user.fullName,
+        `You attempted to login but your email isn't verified yet. Your verification code is: ${unHashedToken}. Valid for 10 minutes.`,
+      ),
+    });
 
-    if (user.isTwoFactorEnabled) {
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                { requires2FA: true, userId: user._id },
-                "Credentials valid. Please provide your 2FA verification code."
-            )
-        );
-    }
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          requiresVerification: true,
+          email: user.email,
+          fullName: user.fullName,
+        },
+        "Email unverified. A new OTP has been sent. Redirecting to verification...",
+      ),
+    );
+  }
 
-    const accessToken = user.generateAccessToken()
-    const loggedInUser = await User.findById(user._id).select("-password -emailVerificationToken -emailVerificationExpiry")
-
-    const options = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production"
-    }
-
+  if (user.isTwoFactorEnabled) {
     return res
-        .status(200)
-        .cookie("accessToken", accessToken, options)
-        .json(
-            new ApiResponse(
-                200,
-                { user: loggedInUser, accessToken },
-                "User logged in successfully"
-            )
-        )
-})
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { requires2FA: true, userId: user._id },
+          "Credentials valid. Please provide your 2FA verification code.",
+        ),
+      );
+  }
+
+  const accessToken = user.generateAccessToken();
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -emailVerificationToken -emailVerificationExpiry",
+  );
+
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        { user: loggedInUser, accessToken },
+        "User logged in successfully",
+      ),
+    );
+});
 
 const verify2FALogin = asyncHandler(async (req, res) => {
-    const { userId, code } = req.body;
+  const { userId, code } = req.body;
 
-    if (!userId || !code) {
-        throw new ApiError(400, "User ID and 2FA code are required");
-    }
+  if (!userId || !code) {
+    throw new ApiError(400, "User ID and 2FA code are required");
+  }
 
-    const user = await User.findById(userId);
+  const user = await User.findById(userId);
 
-    if (!user) {
-        throw new ApiError(404, "User not found");
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
+  const isValid = otp.verify({ token: code, secret: user.twoFactorSecret });
 
-    if (!isValid) {
-        throw new ApiError(400, "Invalid 2FA code. Login failed.");
-    }
+  if (!isValid) {
+    throw new ApiError(400, "Invalid 2FA code. Login failed.");
+  }
 
-    const accessToken = user.generateAccessToken();
-    const loggedInUser = await User.findById(user._id).select("-password -emailVerificationToken -emailVerificationExpiry");
+  const accessToken = user.generateAccessToken();
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -emailVerificationToken -emailVerificationExpiry",
+  );
 
-    const options = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production"
-    };
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  };
 
-    return res
-        .status(200)
-        .cookie("accessToken", accessToken, options)
-        .json(
-            new ApiResponse(
-                200,
-                { user: loggedInUser, accessToken },
-                "User logged in successfully with 2FA"
-            )
-        );
-})
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        { user: loggedInUser, accessToken },
+        "User logged in successfully with 2FA",
+      ),
+    );
+});
 
 const forgotPasswordRequest = asyncHandler(async (req, res) => {
-    const {email} = req.body
+  const { email } = req.body;
 
-    const user = await User.findOne({email})
+  const user = await User.findOne({ email });
 
-    if(!user){
-        throw new ApiError(404, "user does not exist", [])
-    }
+  if (!user) {
+    throw new ApiError(404, "user does not exist", []);
+  }
 
-    const {unHashedToken, hashedToken, tokenExpiry} = user.generateTemporaryToken(20)
+  const { unHashedToken, hashedToken, tokenExpiry } =
+    user.generateTemporaryToken(20);
 
-    user.forgotPasswordToken = hashedToken
-    user.forgotPasswordExpiry = tokenExpiry
+  user.forgotPasswordToken = hashedToken;
+  user.forgotPasswordExpiry = tokenExpiry;
 
-    await user.save({validateBeforeSave: false})
+  await user.save({ validateBeforeSave: false });
 
-    await sendEmail(
-        {
-            email: user?.email,
-            subject: "Password reset request",
-            mailgenContent: forgotPasswordMailgenContent(
-                user.fullName,
-                /*`${process.env.CLIENT_URL || "http://localhost:5000"}/api/v1/reset-password/${unHashedToken}`*/
-                `${process.env.CLIENT_URI || "http://localhost:5173"}/reset-password/${unHashedToken}`
-            )
-        }
-    )
+  await sendEmail({
+    email: user?.email,
+    subject: "Password reset request",
+    mailgenContent: forgotPasswordMailgenContent(
+      user.fullName,
+      `${process.env.CLIENT_URI || "http://localhost:5173"}/reset-password/${unHashedToken}`,
+    ),
+  });
 
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                {},
-                "Password reset mail has been sent on your mail id"
-            )
-        )
-
-})
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        "Password reset mail has been sent on your mail id",
+      ),
+    );
+});
 
 const resetForgotPassword = asyncHandler(async (req, res) => {
-    const {resetToken} = req.params
-    const {newPassword} = req.body
+  const { resetToken } = req.params;
+  const { newPassword } = req.body;
 
-    let hashedToken = crypto
-        .createHash("sha256")
-        .update(resetToken)
-        .digest("hex")
+  let hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
 
-    const user = await User.findOne({
-        forgotPasswordToken: hashedToken,
-        forgotPasswordExpiry: {$gt: Date.now()}
-    })
+  const user = await User.findOne({
+    forgotPasswordToken: hashedToken,
+    forgotPasswordExpiry: { $gt: Date.now() },
+  });
 
-    if(!user){
-        throw new ApiError(489, "Token is invalid or expired")
-    }
+  if (!user) {
+    throw new ApiError(489, "Token is invalid or expired");
+  }
 
-    user.forgotPasswordExpiry = undefined
-    user.forgotPasswordToken = undefined
+  user.forgotPasswordExpiry = undefined;
+  user.forgotPasswordToken = undefined;
 
-    user.password = newPassword
-    await user.save({validateBeforeSave: false})
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
 
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                {},
-                "Password reset successfully"
-            )
-        )
-    
-})
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password reset successfully"));
+});
 
 const logoutUser = asyncHandler(async (req, res) => {
-    await User.findById(req.user._id)
-    const options = {
-        httpOnly: true,
-        secure: true
-    }
-    return res
-        .status(200)
-        .clearCookie("accessToken",options)
-        .json(
-            new ApiResponse(
-                200,
-                "user logged out"
-            )
-        )
-})
+  await User.findById(req.user._id);
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .json(new ApiResponse(200, "user logged out"));
+});
 
 const getCurrentUser = asyncHandler(async (req, res) => {
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                req.user,
-                "Current user fetched successfully"
-            )
-        )
-})
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+});
 
-export { registerUser, verifyOtpAndFinalizeRegister, resendOtp, setup2FA, verifyAndEnable2FA, disable2FA, loginUser, verify2FALogin, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser}
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const { fullName, phoneNumber } = req.body;
+
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (fullName) {
+    user.fullName = fullName;
+  }
+
+  if (phoneNumber) {
+    const existingUser = await User.findOne({
+      phoneNumber: phoneNumber,
+      _id: { $ne: req.user._id },
+    });
+    if (existingUser) {
+      throw new ApiError(
+        409,
+        "Another user with this phone number already exists.",
+      );
+    }
+    user.phoneNumber = phoneNumber;
+  }
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User profile updated successfully"));
+});
+
+export {
+  registerUser,
+  verifyOtpAndFinalizeRegister,
+  resendOtp,
+  setup2FA,
+  verifyAndEnable2FA,
+  disable2FA,
+  loginUser,
+  verify2FALogin,
+  logoutUser,
+  forgotPasswordRequest,
+  resetForgotPassword,
+  getCurrentUser,
+  updateUserProfile
+};

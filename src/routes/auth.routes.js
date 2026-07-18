@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {registerUser, verifyOtpAndFinalizeRegister, resendOtp, setup2FA, verifyAndEnable2FA, disable2FA, loginUser, verify2FALogin, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser } from "../controllers/auth.controllers.js"
+import {registerUser, verifyOtpAndFinalizeRegister, resendOtp, setup2FA, verifyAndEnable2FA, disable2FA, loginUser, verify2FALogin, logoutUser, forgotPasswordRequest, resetForgotPassword, getCurrentUser, updateUserProfile } from "../controllers/auth.controllers.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 import { userRegisterValidator, userLoginValidator, userForgotPasswordValidator, userResetForgotPasswordValidator, createAddressValidator } from "../validators/index.js";
 import { validate } from "../middlewares/validator.middleware.js";
@@ -68,5 +68,13 @@ router.route("/current-user").get(
     verifyJWT,
     getCurrentUser
 )
+
+// profile routes
+
+router.route("/update-profile").put(
+    verifyJWT,
+    updateUserProfile
+)
+
 
 export default router;

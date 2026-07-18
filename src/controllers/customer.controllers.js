@@ -14,6 +14,7 @@ import {availableOrderStatus, OrderStatusEnum } from "../utils/constants.js"
 const addNewAddress = asyncHandler(async (req, res) => {
     const { country, houseNumber, street, landmark, pinCode, city, state } = req.body
 
+    
     const address = new Address({
         user: req.user._id,
         country,
@@ -24,15 +25,17 @@ const addNewAddress = asyncHandler(async (req, res) => {
         city,
         state
     })
-
+    
     await address.save()
+
+    const allAddresses = await Address.find({ user: req.user._id, type: "customer" })
 
     return res
         .status(201)
         .json(
             new ApiResponse(
                 201,
-                address,
+                {allAddresses},
                 "Address added successfully"
             )
         )
@@ -94,6 +97,32 @@ const updateAddress = asyncHandler(async (req, res) => {
                 "Address updated successfully"
             )
         )
+})
+
+const setDefaultAddress = asyncHandler(async (req, res) => {
+    const { addressId } = req.params;
+
+    const address = await Address.findById(addressId);
+
+    if (!address) {
+        throw new ApiError(404, "Address not found");
+    }
+
+    await Address.updateMany(
+        { user: req.user._id, type: "customer" },
+        { $set: { isDefault: false } }
+    );
+
+    address.isDefault = true;
+    await address.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            address,
+            "Default address set successfully"
+        )
+    );
 })
 
 // product controllers
@@ -162,9 +191,13 @@ const getProductById = asyncHandler(async (req, res) => {
         )
 })
 
-const placeOrder = asyncHandler(async (req, res) => {
-    let { quantity, shippingAddressId } = req.body;
+const giveRating = asyncHandler(async (req, res) => {
     const { productId } = req.params;
+    const { rating } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+        throw new ApiError(400, "Rating must be between 1 and 5");
+    }
 
     const product = await Product.findById(productId);
 
@@ -172,47 +205,38 @@ const placeOrder = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Product not found");
     }
 
-    const seller = await Seller.findById(product.seller);
+    const existingRatingIndex = product.rating.findIndex(
+        (r) => r.user.toString() === req.user._id.toString()
+    );
 
-    if (!seller) {
-        throw new ApiError(404, "Seller not found for this product");
+    if (existingRatingIndex !== -1) {
+        product.rating[existingRatingIndex].rating = rating;
+    } else {
+        product.rating.push({
+            user: req.user._id,
+            rating,
+        });
     }
 
-    const shippingAddress = await Address.findById(shippingAddressId);
+    product.numRatings = product.rating.length;
 
-    if (!shippingAddress) {
-        const latestAddress = await Address.findOne({ user: req.user._id, type: "customer" }).sort({ createdAt: -1 }).select('_id');
+    const total = product.rating.reduce(
+        (sum, item) => sum + item.rating,
+        0
+    );
 
-        if (!latestAddress) {
-            throw new ApiError(400, "No shipping address found. Please provide a shipping address.");
-        }
+    product.totalRating = total / product.numRatings;
 
-        shippingAddressId = latestAddress._id;
-    }
+    await product.save();
 
-    const qty = Number(quantity);
-    const price = Number(product.price.replace(/[^\d]/g, ""));
-    const totalPrice = price * qty;
-
-    const order = new Order({
-        userId: req.user._id,
-        productId,
-        sellerId: seller._id,
-        quantity,
-        totalPrice,
-        shippingAddress: shippingAddressId
-    });
-
-    await order.save();
-
-    return res.status(201).json(
+    return res.status(200).json(
         new ApiResponse(
-            201,
-            order,
-            "Order placed successfully"
+            200,
+            product,
+            "Rating submitted successfully"
         )
     );
-})
+});
 
 const getOrders = asyncHandler(async (req, res) => {
     const orders = await Order.find({ userId: req.user._id })
@@ -339,6 +363,67 @@ const addToCart = asyncHandler(async (req, res) => {
     );
 });
 
+const qtyIncrement = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+
+    const cart = await Cart.findOne({ user: req.user._id }).populate('products.product', 'name price images');;
+
+    if (!cart) {
+        throw new ApiError(404, "Cart not found");
+    }
+
+    const itemIndex = cart.products.findIndex(
+        item => item.product._id.toString() === productId
+    );
+
+    if (itemIndex === -1) {
+        throw new ApiError(404, "Product not found in cart");
+    }
+
+    cart.products[itemIndex].quantity += 1;
+    await cart.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            cart,
+            "Product quantity updated successfully"
+        )
+    );
+});
+
+const qtyDecrement = asyncHandler(async (req, res) => {
+    const { productId } = req.params;
+
+    const cart = await Cart.findOne({ user: req.user._id }).populate('products.product', 'name price images');
+
+    if (!cart) {
+        throw new ApiError(404, "Cart not found");
+    }
+
+    const itemIndex = cart.products.findIndex(
+        item => item.product._id.toString() === productId
+    );
+
+    if (itemIndex === -1) {
+        throw new ApiError(404, "Product not found in cart");
+    }
+
+    if (cart.products[itemIndex].quantity > 1) {
+        cart.products[itemIndex].quantity -= 1;
+    }
+
+    await cart.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            cart,
+            "Product quantity updated successfully"
+        )
+    );
+})
+
 const removeFromCart = asyncHandler(async (req, res) => {
     const { productId } = req.params;
 
@@ -368,18 +453,22 @@ const removeFromCart = asyncHandler(async (req, res) => {
     );
 })
 
+
 export {
     addNewAddress,
     getAllAddresses,
     deleteAddress,
     updateAddress,
+    setDefaultAddress,
     getProducts,
     getProductById,
-    placeOrder,
+    giveRating,
     getOrders,
     getOrderById,
     cancelOrder,
     getCart,
     addToCart,
-    removeFromCart
+    removeFromCart,
+    qtyIncrement,
+    qtyDecrement
 }
