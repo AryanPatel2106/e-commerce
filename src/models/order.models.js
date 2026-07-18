@@ -36,6 +36,24 @@ const orderSchema = new Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Address",
         required: true
+    },
+    razorpayOrderId: {
+        type: String,
+        required: true
+    },
+    razorpayPaymentId: {
+        type: String,
+        required: true
+    },
+    paymentStatus: {
+        type: String,
+        enum: ["Paid", "Failed"],
+        required: true
+    },
+    paymentMethod: {
+        type: String,
+        enum: ["Razorpay", "COD"],
+        required: true
     }
 }, {timestamps: true})
 

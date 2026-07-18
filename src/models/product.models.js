@@ -23,6 +23,27 @@ const productSchema = new Schema({
         type: String,   
         required: true
     },
+    rating: [
+        {
+            user: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Customer",
+                required: true
+            },
+            rating: {
+                type: Number,
+                required: true
+            },
+        }
+    ],
+    totalRating: {
+        type: Number,
+        default: 0
+    },
+    numRatings: {
+        type: Number,
+        default: 0
+    },
     quantity: {
         type: String,   
         required: true

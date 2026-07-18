@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addNewAddress, getAllAddresses, deleteAddress, updateAddress, getProducts, getProductById, placeOrder, getOrders,getOrderById, cancelOrder, getCart, addToCart, removeFromCart } from "../controllers/customer.controllers.js"
+import { addNewAddress, getAllAddresses, deleteAddress, updateAddress, setDefaultAddress, getProducts, getProductById, giveRating, getOrders,getOrderById, cancelOrder, getCart, addToCart, removeFromCart, qtyIncrement, qtyDecrement } from "../controllers/customer.controllers.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
 import { createAddressValidator } from "../validators/index.js";
 import { validate } from "../middlewares/validator.middleware.js";
@@ -27,6 +27,10 @@ router.route("/:addressId")
         verifyJWT,
         updateAddress
     )
+    .patch(
+        verifyJWT,
+        setDefaultAddress
+    )
 
 // product routes
 
@@ -41,9 +45,9 @@ router.route("/products/:productId")
         verifyJWT,
         getProductById
     )
-    .post(
+    .patch(
         verifyJWT,
-        placeOrder
+        giveRating
     )
 
 router.route("/orders")
@@ -76,6 +80,22 @@ router.route("/cart/:productId")
     .delete(
         verifyJWT,
         removeFromCart
+    )
+    .put(
+        verifyJWT,
+        qtyIncrement
+    )
+
+router.route("/cart/:productId/increment")
+    .put(
+        verifyJWT,
+        qtyIncrement
+    )
+
+router.route("/cart/:productId/decrement")
+    .put(
+        verifyJWT,
+        qtyDecrement
     )
 
 export default router;
